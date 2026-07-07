@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Prevent "socket hang up" / ECONNRESET when the backend takes a while
+  // (e.g. during RAG retrieval + LLM call). keepAlive:false forces a fresh
+  // TCP connection per request, which avoids half-closed socket races.
+  httpAgentOptions: {
+    keepAlive: false,
+  },
   async rewrites() {
     // BACKEND_URL is runtime-only to avoid Next.js build-time inlining
     const apiBase =
