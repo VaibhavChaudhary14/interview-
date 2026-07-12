@@ -49,8 +49,8 @@ export default function HomePage() {
   };
 
   const handleStartInterview = async () => {
-    if (!resumeId || !role) {
-      setError("Please upload a resume and select a role first.");
+    if (!role) {
+      setError("Please enter a target role first.");
       return;
     }
     setLoading(true);
@@ -74,7 +74,7 @@ export default function HomePage() {
     }
   };
 
-  const canStart = !!resumeId && !!role;
+  const canStart = !!role;
 
   return (
     <div>
@@ -124,11 +124,10 @@ export default function HomePage() {
             lineHeight: 1.65,
           }}
         >
-          Upload your resume · pick a role · receive personalized questions generated from a
-          knowledge base using retrieval-augmented generation.
+          Upload your resume · enter a target role · receive personalized questions generated using
+          Retrieval-Augmented Generation.
         </p>
 
-        {/* Feature pills */}
         <div
           style={{
             display: "flex",
@@ -138,7 +137,7 @@ export default function HomePage() {
             marginTop: "1.5rem",
           }}
         >
-          {["Resume-aware questions", "Topic breadth", "Adaptive depth", "Full transcript"].map(
+          {["Resume-aware questions", "Any Target Role", "Adaptive depth", "Full transcript"].map(
             (f) => (
               <span key={f} className="badge badge-primary" style={{ fontSize: "0.75rem" }}>
                 ✦ {f}
@@ -153,7 +152,7 @@ export default function HomePage() {
         className="animate-fade-in"
         style={{ marginBottom: "1.25rem", animationDelay: "0.1s" }}
       >
-        <StepLabel number={1} label="Upload your resume" done={!!resumeId} />
+        <StepLabel number={1} label="Upload your resume (Optional - skip to practice without background)" done={!!resumeId} />
         <ResumeUpload onUploaded={handleResumeUploaded} />
       </div>
 
@@ -162,84 +161,56 @@ export default function HomePage() {
         className="animate-fade-in"
         style={{ marginBottom: "1.25rem", animationDelay: "0.2s" }}
       >
-        <StepLabel number={2} label="Select your target role" done={!!role} />
+        <StepLabel number={2} label="Enter your target role" done={!!role} />
         <div className="card" style={{ padding: "1.5rem" }}>
-          <div style={{ display: "flex", gap: "0.875rem", flexWrap: "wrap" }}>
-            {ROLES.map((r) => (
-              <button
-                key={r.slug}
-                id={`role-${r.slug}`}
-                onClick={() => setRole(r.slug)}
-                className="role-card"
-                style={
-                  role === r.slug
-                    ? {
-                        borderColor: r.color,
-                        background: r.gradient,
-                        boxShadow: `0 0 0 4px ${r.color}20, var(--shadow-card)`,
-                      }
-                    : {}
-                }
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                  <span
-                    style={{
-                      color: role === r.slug ? r.color : "#64748b",
-                      transition: "color 0.25s",
-                    }}
-                  >
-                    {r.icon}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "0.9375rem",
-                      fontWeight: 700,
-                      color: role === r.slug ? "#e2e8f0" : "#94a3b8",
-                      transition: "color 0.25s",
-                    }}
-                  >
-                    {r.label}
-                  </span>
-                  {role === r.slug && (
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      style={{ marginLeft: "auto", flexShrink: 0 }}
-                    >
-                      <path
-                        d="M20 6L9 17l-5-5"
-                        stroke={r.color}
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </div>
-                <p style={{ fontSize: "0.75rem", color: "#64748b", lineHeight: 1.5 }}>
-                  {r.description}
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
-                  {r.topics.map((t) => (
-                    <span
-                      key={t}
-                      style={{
-                        fontSize: "0.6875rem",
-                        padding: "0.125rem 0.5rem",
-                        background: "rgba(255,255,255,0.04)",
-                        color: "#475569",
-                        borderRadius: 6,
-                        border: "1px solid rgba(255,255,255,0.06)",
-                      }}
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <input
+              type="text"
+              id="role-input"
+              placeholder="e.g. Growth Manager, Backend Engineer, Product Manager, Nurse..."
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.875rem 1rem",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "0.5rem",
+                color: "#f8fafc",
+                fontSize: "0.9375rem",
+                outline: "none",
+                transition: "border-color 0.2s",
+              }}
+            />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+              <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Suggestions:</span>
+              {[
+                "Backend Engineer",
+                "Frontend Engineer",
+                "Product Manager",
+                "Growth Marketer",
+                "AI / ML Engineer",
+                "Financial Analyst",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setRole(s)}
+                  type="button"
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "0.25rem 0.625rem",
+                    background: "rgba(99,102,241,0.08)",
+                    border: "1px solid rgba(99,102,241,0.2)",
+                    color: "#a5b4fc",
+                    borderRadius: "9999px",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -293,7 +264,7 @@ export default function HomePage() {
               marginTop: "0.875rem",
             }}
           >
-            {!resumeId ? "Upload your resume first" : "Select a role to continue"}
+            Enter a role to continue
           </p>
         )}
       </div>

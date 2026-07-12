@@ -8,8 +8,6 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN python -m spacy download en_core_web_sm
-
 # ── Pre-download the embedding model at build time ──────────────────────────
 # This bakes the model into the image so containers never need internet access
 # at runtime. Without this, sentence-transformers retries huggingface.co 5

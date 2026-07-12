@@ -140,19 +140,42 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
 
     # ─── RAG RETRIEVAL ────────────────────────────────────────────────────────
     chunks = []
-    retriever = _get_retriever()
-    if retriever:
-        try:
-            chunks = retriever.retrieve(query=query, role=session.role, k=settings.retrieval_k)
-            logger.info("Retrieved %d chunks for topic '%s'", len(chunks), topic)
-            # If no chunks above threshold, retry with role-generic query
-            if not chunks:
-                fallback_query = f"{session.role} {topic}"
-                chunks = retriever.retrieve(query=fallback_query, role=session.role, k=settings.retrieval_k)
-                logger.info("Fallback retrieval: %d chunks", len(chunks))
-        except Exception as e:
-            logger.warning("RAG retrieval failed: %s — proceeding without context", e)
-            chunks = []
+    
+    # Check matched family collection
+    from app.models.role_family import RoleFamily
+    kb_collection_name = None
+    if session.matched_family_id:
+        family = db.query(RoleFamily).filter(RoleFamily.id == session.matched_family_id).first()
+        if family:
+            kb_collection_name = family.kb_collection_name
+    else:
+        # Fallback to legacy behavior for existing sessions
+        kb_collection_name = f"kb_{session.role}"
+
+    if kb_collection_name:
+        retriever = _get_retriever()
+        if retriever:
+            try:
+                chunks = retriever.retrieve(
+                    query=query,
+                    role=session.role,
+                    k=settings.retrieval_k,
+                    collection_name=kb_collection_name
+                )
+                logger.info("Retrieved %d chunks for topic '%s' using collection '%s'", len(chunks), topic, kb_collection_name)
+                # If no chunks above threshold, retry with role-generic query
+                if not chunks:
+                    fallback_query = f"{session.role} {topic}"
+                    chunks = retriever.retrieve(
+                        query=fallback_query,
+                        role=session.role,
+                        k=settings.retrieval_k,
+                        collection_name=kb_collection_name
+                    )
+                    logger.info("Fallback retrieval: %d chunks", len(chunks))
+            except Exception as e:
+                logger.warning("RAG retrieval failed: %s — proceeding without context", e)
+                chunks = []
     # ─────────────────────────────────────────────────────────────────────────
 
     # Optional adaptive context from last answer
@@ -180,6 +203,7 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
         topics_already_asked=already_asked,
         prev_answer=prev_answer_text,
         years_experience=years_exp,
+        mode=session.mode,
     )
     # ─────────────────────────────────────────────────────────────────────────
 

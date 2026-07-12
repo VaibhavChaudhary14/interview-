@@ -10,6 +10,8 @@ from app.api.v1.routes_sessions import router as sessions_router
 from app.api.v1.routes_interview import router as interview_router
 from app.api.v1.routes_reports import router as reports_router
 from app.api.v1.routes_roles import router as roles_router
+from app.api.v1.routes_consent import router as consent_router
+from app.api.v1.routes_audio import router as audio_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -54,3 +56,5 @@ app.include_router(resume_router, prefix="/api/v1")
 app.include_router(sessions_router, prefix="/api/v1")
 app.include_router(interview_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api/v1")
+app.include_router(consent_router, prefix="/api/v1")
+app.include_router(audio_router, prefix="/api/v1")

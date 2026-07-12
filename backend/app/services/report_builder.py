@@ -4,8 +4,11 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 
+from sqlalchemy.orm import Session as DBSession
+
+
 class ReportBuilderService:
-    def build(self, session, questions: list, answers: list, resume_signals: dict) -> dict:
+    def build(self, session, questions: list, answers: list, resume_signals: dict, db: DBSession = None) -> dict:
         topics_covered = list(set(q.topic for q in questions))
         transcript = []
 
@@ -14,15 +17,30 @@ class ReportBuilderService:
         total_words = 0
         answered_count = 0
 
+        recording_map = {}
+        if db:
+            from app.models.recording import Recording
+            recordings = db.query(Recording).filter(Recording.session_id == session.id).all()
+            recording_map = {r.answer_id: r for r in recordings if r.answer_id}
+
         for q in questions:
             answer = qa_map.get(q.id)
             answer_text = answer.answer_text if answer else ""
             word_count = answer.word_count if answer else 0
+            
+            recording_id = None
+            audio_metrics = None
+
             if answer:
                 answered_count += 1
                 total_words += word_count
                 if word_count < 15:
                     thin_topics.append(q.topic)
+                
+                recording = recording_map.get(answer.id)
+                if recording and recording.deletion_completed_at is None:
+                    recording_id = str(recording.id)
+                    audio_metrics = recording.metrics
 
             transcript.append({
                 "sequence": q.sequence,
@@ -30,6 +48,8 @@ class ReportBuilderService:
                 "answer": answer_text,
                 "topic": q.topic,
                 "source_chunks": q.source_chunk_ids or [],
+                "recording_id": recording_id,
+                "audio_metrics": audio_metrics,
             })
 
         avg_words = total_words // max(answered_count, 1)

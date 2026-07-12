@@ -1,7 +1,6 @@
 import re
 import logging
 import pdfplumber
-import spacy
 from typing import IO
 
 logger = logging.getLogger(__name__)

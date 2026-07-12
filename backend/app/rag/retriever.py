@@ -18,11 +18,12 @@ class RAGRetriever:
         self.vs = vector_store
         self.embedder = embedder
 
-    def retrieve(self, query: str, role: str, k: int | None = None) -> list:
+    def retrieve(self, query: str, role: str, k: int | None = None, collection_name: str | None = None) -> list:
         query_embedding = self.embedder.encode(query)
         k = k or settings.retrieval_k
+        col = collection_name or f"kb_{role}"
         chunks = self.vs.query(
-            collection=f"kb_{role}",
+            collection=col,
             query_embedding=query_embedding,
             k=k,
         )

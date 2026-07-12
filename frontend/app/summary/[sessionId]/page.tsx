@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import RecordingPlayback from "@/components/RecordingPlayback";
 
 interface TranscriptEntry {
   sequence: number;
@@ -10,6 +11,7 @@ interface TranscriptEntry {
   answer: string;
   topic: string;
   source_chunks: string[];
+  recording_id?: string;
 }
 
 interface Insights {
@@ -413,6 +415,39 @@ export default function SummaryPage() {
                       <p style={{ fontSize: "0.875rem", color: "#334155", fontStyle: "italic" }}>
                         (no answer recorded)
                       </p>
+                    )}
+                    {entry.recording_id && (
+                      <div style={{ marginTop: "1rem", marginBottom: "1rem", display: "grid", gridTemplateColumns: "1fr", gap: "1rem" }}>
+                        <RecordingPlayback
+                          sessionId={sessionId}
+                          recordingId={entry.recording_id}
+                          questionSequence={entry.sequence}
+                        />
+                        <div style={{
+                          padding: "1rem",
+                          background: "rgba(255,255,255,0.01)",
+                          border: "1px dashed rgba(255,255,255,0.06)",
+                          borderRadius: "0.5rem"
+                        }}>
+                          <p style={{ fontSize: "0.75rem", color: "#6366f1", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+                            🎙️ Delivery Coaching Insights (Placeholder)
+                          </p>
+                          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                            <div>
+                              <p style={{ fontSize: "0.6875rem", color: "#475569" }}>Speaking Pace</p>
+                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", fontWeight: 600 }}>-- WPM</p>
+                            </div>
+                            <div>
+                              <p style={{ fontSize: "0.6875rem", color: "#475569" }}>Filler Words</p>
+                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", fontWeight: 600 }}>-- detected</p>
+                            </div>
+                            <div>
+                              <p style={{ fontSize: "0.6875rem", color: "#475569" }}>Long Pauses</p>
+                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", fontWeight: 600 }}>-- pauses</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     )}
                     {entry.source_chunks && entry.source_chunks.length > 0 && (
                       <div style={{ marginTop: "0.75rem" }}>

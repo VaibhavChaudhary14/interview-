@@ -12,4 +12,7 @@ class Answer(Base):
     question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id"), unique=True, nullable=False)
     answer_text = Column(Text, nullable=False)
     word_count = Column(Integer, default=0)
+    recording_id = Column(UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=True)
+    transcript_text = Column(Text, nullable=True)
+    transcript_provider = Column(Text, nullable=True)
     answered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

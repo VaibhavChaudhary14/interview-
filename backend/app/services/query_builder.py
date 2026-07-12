@@ -23,13 +23,28 @@ class QueryBuilderService:
     def build_queries(self, resume_signals: dict, role: str, max_questions: int) -> list[str]:
         role_phrase = ROLE_CONTEXT.get(role, f"{role} concepts")
         topics = TOPIC_CHECKLISTS.get(role, [])
+        if not topics:
+            topics = [
+                "core concepts and principles",
+                "practical problem solving",
+                "system or workflow design",
+                "performance and optimization",
+                "testing and quality assurance",
+                "security and reliability",
+                "collaboration and communication",
+                "prior project experience",
+            ]
+
         top_skills = resume_signals.get("extracted_skills", [])[:5]
         top_tech = resume_signals.get("extracted_technologies", [])[:3]
 
         queries = []
         for i in range(min(max_questions, len(topics))):
             topic = topics[i % len(topics)]
-            query = f"{role_phrase} — candidate background: {', '.join(top_skills + top_tech)}. Focus: {topic}"
+            background_text = ""
+            if top_skills or top_tech:
+                background_text = f" — candidate background: {', '.join(top_skills + top_tech)}"
+            query = f"{role_phrase}{background_text}. Focus: {topic}"
             queries.append(query)
 
         logger.info("Built %d retrieval queries for role=%s", len(queries), role)

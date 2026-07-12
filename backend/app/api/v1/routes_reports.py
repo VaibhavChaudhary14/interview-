@@ -31,7 +31,7 @@ def generate_report(session_id: str, db: DBSession = Depends(get_db)):
         "extracted_skills": resume.extracted_skills if resume else [],
     }
 
-    data = ReportBuilderService().build(session, questions, answers, resume_signals)
+    data = ReportBuilderService().build(session, questions, answers, resume_signals, db=db)
 
     report = Report(
         session_id=session.id,
@@ -63,5 +63,5 @@ def get_report(session_id: str, db: DBSession = Depends(get_db)):
         "extracted_skills": resume.extracted_skills if resume else [],
     }
 
-    data = ReportBuilderService().build(session, questions, answers, resume_signals)
+    data = ReportBuilderService().build(session, questions, answers, resume_signals, db=db)
     return ReportResponse(**data)

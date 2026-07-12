@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import QuestionCard from "@/components/QuestionCard";
 import ProgressBar from "@/components/ProgressBar";
+import ConsentModal from "@/components/ConsentModal";
 
 interface Question {
   question_id: string;
@@ -39,6 +40,10 @@ export default function InterviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [transitioning, setTransitioning] = useState(false);
+
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [audioAllowed, setAudioAllowed] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
 
   const fetchSessionStatus = useCallback(async () => {
     try {
@@ -79,10 +84,37 @@ export default function InterviewPage() {
     }
   }, [sessionId]);
 
+  const fetchConsentStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/consent`);
+      if (res.ok) {
+        const data = await res.json();
+        setAudioAllowed(data.audio_recording_allowed);
+        setConsentChecked(true);
+        fetchNextQuestion();
+      } else if (res.status === 404) {
+        setShowConsentModal(true);
+      } else {
+        setConsentChecked(true);
+        fetchNextQuestion();
+      }
+    } catch {
+      setConsentChecked(true);
+      fetchNextQuestion();
+    }
+  }, [sessionId, fetchNextQuestion]);
+
   useEffect(() => {
     fetchSessionStatus();
+    fetchConsentStatus();
+  }, [fetchConsentStatus, fetchSessionStatus]);
+
+  const handleConsentResolved = (allowed: boolean) => {
+    setAudioAllowed(allowed);
+    setConsentChecked(true);
+    setShowConsentModal(false);
     fetchNextQuestion();
-  }, [fetchNextQuestion, fetchSessionStatus]);
+  };
 
   const handleAnswer = async (answerText: string) => {
     if (!question) return;
@@ -127,6 +159,15 @@ export default function InterviewPage() {
     if (!confirm("End the interview now and view your report?")) return;
     await endAndGoToSummary();
   };
+
+  if (showConsentModal) {
+    return (
+      <ConsentModal
+        sessionId={sessionId}
+        onResolved={handleConsentResolved}
+      />
+    );
+  }
 
   /* ── Loading skeleton ──────────────────────────────────── */
   if (loading && !question) {
@@ -242,7 +283,7 @@ export default function InterviewPage() {
             transition: "opacity 0.3s, transform 0.3s",
           }}
         >
-          <QuestionCard question={question} onAnswer={handleAnswer} disabled={submitting} />
+          <QuestionCard question={question} onAnswer={handleAnswer} disabled={submitting} sessionId={sessionId} audioAllowed={audioAllowed} />
         </div>
       ) : question ? (
         <div
@@ -252,7 +293,7 @@ export default function InterviewPage() {
             transition: "opacity 0.3s, transform 0.3s",
           }}
         >
-          <QuestionCard question={question} onAnswer={handleAnswer} disabled={submitting} />
+          <QuestionCard question={question} onAnswer={handleAnswer} disabled={submitting} sessionId={sessionId} audioAllowed={audioAllowed} />
         </div>
       ) : null}
 
@@ -273,6 +314,7 @@ export default function InterviewPage() {
           Preparing next question…
         </div>
       )}
+
     </div>
   );
 }

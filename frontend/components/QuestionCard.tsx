@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAnswerInput } from "@/hooks/useAnswerInput";
 
 interface Question {
   question_id: string;
@@ -15,6 +16,8 @@ interface Props {
   question: Question;
   onAnswer: (answer: string) => void;
   disabled: boolean;
+  sessionId: string;
+  audioAllowed: boolean;
 }
 
 const TOPIC_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -44,19 +47,107 @@ function getTopicStyle(topic: string) {
   return { bg: "rgba(99,102,241,0.12)", text: "#a5b4fc", border: "rgba(99,102,241,0.25)" };
 }
 
-export default function QuestionCard({ question, onAnswer, disabled }: Props) {
+export default function QuestionCard({
+  question,
+  onAnswer,
+  disabled,
+  sessionId,
+  audioAllowed,
+}: Props) {
   const [answer, setAnswer] = useState("");
+  const [localAudioAllowed, setLocalAudioAllowed] = useState(audioAllowed);
+  const [transcribing, setTranscribing] = useState(false);
+  const [uiError, setUiError] = useState<string | null>(null);
+
   const wordCount = answer.trim() ? answer.trim().split(/\s+/).length : 0;
   const topicStyle = getTopicStyle(question.topic);
+
+  const {
+    isRecording,
+    startRecording,
+    stopRecording,
+    uploadRecording,
+    error: micError,
+  } = useAnswerInput({
+    sessionId,
+    questionId: question.question_id,
+    audioAllowed: localAudioAllowed,
+  });
+
+  // Automatically degrade to text-only mode on mic permissions/access errors
+  useEffect(() => {
+    if (micError) {
+      setUiError(micError);
+      setLocalAudioAllowed(false);
+    }
+  }, [micError]);
 
   const handleSubmit = () => {
     if (!answer.trim()) return;
     onAnswer(answer.trim());
     setAnswer("");
+    setUiError(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && e.ctrlKey) handleSubmit();
+  };
+
+  const handleStopAndTranscribe = async () => {
+    setTranscribing(true);
+    setUiError(null);
+    try {
+      const audioBlob = await stopRecording();
+      if (!audioBlob) {
+        throw new Error("No audio recorded.");
+      }
+      const uploadRes = await uploadRecording(audioBlob);
+      if (uploadRes) {
+        if (uploadRes.status === "pending") {
+          // Keep transcribing true while we poll the webhook status
+          const interval = setInterval(async () => {
+            try {
+              const statusRes = await fetch(
+                `/api/v1/sessions/${sessionId}/answers/${question.question_id}/transcript-status`
+              );
+              if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                if (statusData.status === "completed") {
+                  clearInterval(interval);
+                  setAnswer(statusData.transcript || "");
+                  setTranscribing(false);
+                } else if (statusData.status === "error") {
+                  clearInterval(interval);
+                  setTranscribing(false);
+                  setUiError("Transcription failed. You can type your answer instead.");
+                  setLocalAudioAllowed(false);
+                }
+              }
+            } catch (err) {
+              // keep polling
+            }
+          }, 3000);
+        } else if (uploadRes.status === "completed" && uploadRes.transcript) {
+          setAnswer(uploadRes.transcript);
+          setTranscribing(false);
+        } else {
+          throw new Error(uploadRes.message || "Transcription failed.");
+        }
+      } else {
+        throw new Error("Upload failed.");
+      }
+    } catch (e: any) {
+      setTranscribing(false);
+      const msg = (e.message || "").toLowerCase();
+      if (msg.includes("rate limit") || msg.includes("429")) {
+        setUiError("Too many people practicing right now. Please try again in 5 minutes.");
+      } else if (msg.includes("api key") || msg.includes("key missing")) {
+        setUiError("Service temporarily unavailable. Your recording was saved—we'll transcribe it in the background.");
+      } else {
+        setUiError("Couldn't process your audio recording. Switching to manual typing fallback.");
+      }
+      setLocalAudioAllowed(false);
+    }
   };
 
   return (
@@ -159,55 +250,217 @@ export default function QuestionCard({ question, onAnswer, disabled }: Props) {
           </div>
         )}
 
-        {/* Answer area */}
-        <div style={{ position: "relative" }}>
-          <textarea
-            id={`answer-input-${question.question_id}`}
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your answer here... (Ctrl+Enter to submit)"
-            rows={6}
-            className="input-field"
-            disabled={disabled}
-            style={{ paddingBottom: "2.5rem" }}
-          />
-          {/* Word counter inside textarea */}
-          <span
-            style={{
-              position: "absolute",
-              bottom: "0.75rem",
-              right: "0.875rem",
-              fontSize: "0.7rem",
-              fontWeight: 500,
-              color: wordCount > 0 ? "#6366f1" : "#334155",
-              pointerEvents: "none",
-              transition: "color 0.2s",
-            }}
-          >
-            {wordCount} {wordCount === 1 ? "word" : "words"}
-          </span>
-        </div>
+        {/* Runtime notifications / warnings */}
+        {uiError && (
+          <div className="alert-error" style={{ marginBottom: "1rem", fontSize: "0.8125rem" }}>
+            <span style={{ marginRight: "0.5rem" }}>⚠️</span>
+            {uiError}
+          </div>
+        )}
+
+        {/* Voice Input Section */}
+        {localAudioAllowed ? (
+          <div style={{ marginBottom: "1.5rem" }}>
+            {transcribing ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "2rem",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px dashed rgba(99,102,241,0.25)",
+                  borderRadius: "0.75rem",
+                  gap: "0.875rem",
+                }}
+              >
+                <span className="spinner" style={{ width: 24, height: 24 }} />
+                <p style={{ fontSize: "0.875rem", color: "#a5b4fc", fontWeight: 500 }}>
+                  Converting your response to text using Whisper...
+                </p>
+              </div>
+            ) : isRecording ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "2rem",
+                  background: "rgba(239,68,68,0.03)",
+                  border: "1px solid rgba(239,68,68,0.15)",
+                  borderRadius: "0.75rem",
+                  gap: "1.25rem",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span className="pulse-dot" style={{ width: 10, height: 10, background: "#ef4444", borderRadius: "50%" }} />
+                  <span style={{ fontSize: "0.875rem", color: "#ef4444", fontWeight: 700, letterSpacing: "0.05em" }}>
+                    RECORDING VOICE RESPONSE
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStopAndTranscribe}
+                  disabled={disabled}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    background: "#ef4444",
+                    color: "white",
+                    fontWeight: 600,
+                    borderRadius: "0.5rem",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 0 16px rgba(239,68,68,0.4)",
+                  }}
+                >
+                  Stop Recording & Transcribe
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "2rem",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "0.75rem",
+                  gap: "1.25rem",
+                }}
+              >
+                <p style={{ fontSize: "0.875rem", color: "#94a3b8" }}>
+                  Conduct this question by speaking your answer.
+                </p>
+                <div style={{ display: "flex", gap: "1rem" }}>
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={disabled}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.75rem 1.5rem",
+                      background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                      color: "white",
+                      fontWeight: 600,
+                      borderRadius: "0.5rem",
+                      border: "none",
+                      cursor: "pointer",
+                      boxShadow: "0 0 16px rgba(99,102,241,0.4)",
+                    }}
+                  >
+                    🎤 Start Voice Input
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocalAudioAllowed(false)}
+                    style={{
+                      padding: "0.75rem 1.5rem",
+                      background: "none",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      color: "#94a3b8",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Type response instead
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Text Input / Review Area */}
+        {(!localAudioAllowed || answer.trim() !== "") && (
+          <div style={{ position: "relative", marginTop: "1rem" }}>
+            {localAudioAllowed && answer.trim() !== "" && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <span style={{ fontSize: "0.75rem", color: "#a5b4fc", fontWeight: 600 }}>
+                  ✨ Review and edit your voice transcription below:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setAnswer(""); setUiError(null); }}
+                  style={{ fontSize: "0.75rem", color: "#64748b", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Re-record
+                </button>
+              </div>
+            )}
+            {!localAudioAllowed && audioAllowed && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setLocalAudioAllowed(true)}
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "#a5b4fc",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  🎤 Switch back to voice response
+                </button>
+              </div>
+            )}
+            <textarea
+              id={`answer-input-${question.question_id}`}
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={localAudioAllowed ? "Your transcribed text will appear here. You can edit it." : "Type your answer here... (Ctrl+Enter to submit)"}
+              rows={6}
+              className="input-field"
+              disabled={disabled || transcribing}
+              style={{ paddingBottom: "2.5rem" }}
+            />
+            {/* Word counter inside textarea */}
+            <span
+              style={{
+                position: "absolute",
+                bottom: "0.75rem",
+                right: "0.875rem",
+                fontSize: "0.7rem",
+                fontWeight: 500,
+                color: wordCount > 0 ? "#6366f1" : "#334155",
+                pointerEvents: "none",
+                transition: "color 0.2s",
+              }}
+            >
+              {wordCount} {wordCount === 1 ? "word" : "words"}
+            </span>
+          </div>
+        )}
 
         {/* Submit button */}
-        <button
-          id={`submit-answer-btn-${question.question_id}`}
-          onClick={handleSubmit}
-          disabled={disabled || !answer.trim()}
-          className="btn-primary"
-          style={{ marginTop: "1rem" }}
-        >
-          {disabled ? (
-            <><span className="spinner" style={{ width: 16, height: 16 }} /> Submitting...</>
-          ) : (
-            <>
-              Submit Answer
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </>
-          )}
-        </button>
+        {(!localAudioAllowed || answer.trim() !== "") && (
+          <button
+            id={`submit-answer-btn-${question.question_id}`}
+            onClick={handleSubmit}
+            disabled={disabled || !answer.trim() || transcribing}
+            className="btn-primary"
+            style={{ marginTop: "1rem" }}
+          >
+            {disabled ? (
+              <><span className="spinner" style={{ width: 16, height: 16 }} /> Submitting...</>
+            ) : (
+              <>
+                Submit Answer
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
