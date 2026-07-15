@@ -8,7 +8,7 @@ target_metadata = Base.metadata
 config = context.config
 
 def run_migrations_online():
-    url = config.get_main_option("sqlalchemy.url") or settings.database_url
+    url = settings.database_url or config.get_main_option("sqlalchemy.url")
     engine = create_engine(url)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
