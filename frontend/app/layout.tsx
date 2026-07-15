@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { BrowseNavLink } from "@/components/BrowseNavLink";
+
 
 export const metadata: Metadata = {
   title: "AI Interview Simulator | Candidate Screening System",
@@ -25,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           <div
             style={{
-              maxWidth: 760,
+              maxWidth: 1200,
               margin: "0 auto",
               padding: "0 1.25rem",
               height: 60,
@@ -82,7 +84,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </p>
             </div>
 
-            <div style={{ marginLeft: "auto" }}>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
+              <BrowseNavLink />
               <span className="badge badge-accent" style={{ fontSize: "0.6875rem" }}>
                 ⚡ Live
               </span>

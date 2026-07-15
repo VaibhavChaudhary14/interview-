@@ -10,6 +10,8 @@ from app.models.consent_policy_version import ConsentPolicyVersion
 from app.models.role_family import RoleFamily
 from app.models.transcription_job import TranscriptionJob
 from app.models.provider_usage import ProviderUsage
+from app.models.answer_metrics import AnswerMetrics
+from app.models.feedback import Feedback
 
 __all__ = [
     "Resume",
@@ -24,5 +26,7 @@ __all__ = [
     "RoleFamily",
     "TranscriptionJob",
     "ProviderUsage",
+    "AnswerMetrics",
+    "Feedback",
 ]
 

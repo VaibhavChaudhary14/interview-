@@ -1,9 +1,17 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Float
+import enum
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Float, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+
+
+class SessionDifficulty(str, enum.Enum):
+    beginner = "beginner"
+    intermediate = "intermediate"
+    advanced = "advanced"
+
 
 
 VALID_STATUSES = [
@@ -31,6 +39,11 @@ class Session(Base):
     mode = Column(String, default="self_prep", nullable=False)
     retention_days_override = Column(Integer, nullable=True)
     status = Column(String, default="CREATED", nullable=False)
+    difficulty = Column(
+        Enum(SessionDifficulty, name="session_difficulty"),
+        nullable=False,
+        default=SessionDifficulty.intermediate,
+    )
     max_questions = Column(Integer, default=8)
     questions_asked = Column(Integer, default=0)
     retrieval_queries = Column(JSONB, default=list)

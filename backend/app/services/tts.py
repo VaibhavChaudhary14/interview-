@@ -20,33 +20,33 @@ class TTSService:
         3. Local/Mock fallback (returns simulated WAV audio bytes)
 
         Returns a tuple: (audio_bytes, provider_name)
+
+        Usage is tracked by character count of the input text — TTS providers
+        (ElevenLabs, Sarvam) price per character of input, not per second of
+        audio output. See ProviderUsage.record_tts_usage().
         """
+        char_count = len(text)
+
         # 1. Try ElevenLabs
         if settings.elevenlabs_api_key:
-            start_time = time.time()
             try:
                 provider = ElevenLabsTTSProvider()
                 audio_bytes = provider.generate_speech(text, language_code)
-                duration = time.time() - start_time
-                ProviderUsage.record_usage(db, "elevenlabs", duration)
+                ProviderUsage.record_tts_usage(db, "elevenlabs", char_count)
                 if audio_bytes:
                     return audio_bytes, "elevenlabs"
             except Exception as e:
-                duration = time.time() - start_time
                 logger.warning(f"ElevenLabs TTS failed, trying next provider. Error: {e}")
 
         # 2. Try Sarvam AI
         if settings.sarvam_api_key:
-            start_time = time.time()
             try:
                 provider = SarvamTTSProvider()
                 audio_bytes = provider.generate_speech(text, language_code)
-                duration = time.time() - start_time
-                ProviderUsage.record_usage(db, "sarvam", duration)
+                ProviderUsage.record_tts_usage(db, "sarvam", char_count)
                 if audio_bytes:
                     return audio_bytes, "sarvam"
             except Exception as e:
-                duration = time.time() - start_time
                 logger.warning(f"Sarvam TTS failed. Error: {e}")
 
         # 3. Safe Mock Fallback (returns a minimal valid 44-byte silent WAV)

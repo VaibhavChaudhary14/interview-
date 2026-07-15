@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 
 
 class TranscriptEntry(BaseModel):
@@ -10,6 +10,8 @@ class TranscriptEntry(BaseModel):
     source_chunks: list[str]
     recording_id: Optional[str] = None
     audio_metrics: Optional[dict] = None
+    answer_id: Optional[str] = None
+
 
 
 class Insights(BaseModel):
@@ -26,3 +28,6 @@ class ReportResponse(BaseModel):
     topics_covered: list[str]
     transcript: list[TranscriptEntry]
     insights: Insights
+    delivery_summary: Optional[Any] = None  # None until metrics are computed
+    has_feedback: bool = False
+

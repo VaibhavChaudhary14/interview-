@@ -134,3 +134,60 @@ def test_consent_api_get_active_version(client, db_session):
     data = resp.json()
     assert data["version"] == "v1.2"  # latest seeded policy
     assert "This is version 1.2 consent text" in data["consent_text"]
+
+
+# ---------------------------------------------------------------------------
+# Append-only policy version enforcement (Phase 0 cleanup — A.2)
+# ---------------------------------------------------------------------------
+
+def test_create_policy_version_success(db_session):
+    """create_policy_version() with a new version string succeeds."""
+    policy = ConsentService.create_policy_version(db_session, "v2.0", "New policy text v2.0")
+    assert policy.version == "v2.0"
+    assert policy.consent_text == "New policy text v2.0"
+    assert policy.id is not None
+
+    # Confirm it's persisted
+    from_db = db_session.query(ConsentPolicyVersion).filter_by(version="v2.0").first()
+    assert from_db is not None
+    assert from_db.consent_text == "New policy text v2.0"
+
+
+def test_policy_version_cannot_be_overwritten(db_session):
+    """
+    create_policy_version() raises ValueError if the version string already
+    exists — policy versions are append-only. The original text must be
+    preserved unchanged in the DB.
+
+    Note: there is no HTTP endpoint for creating policy versions; this is a
+    service-layer concern. The test calls the service directly, which is the
+    complete and correct enforcement surface.
+    """
+    # First creation succeeds
+    ConsentService.create_policy_version(db_session, "v1.0", "Original text A")
+
+    # Second creation with same version string, different text, must raise
+    with pytest.raises(ValueError) as exc_info:
+        ConsentService.create_policy_version(db_session, "v1.0", "Tampered text B")
+
+    assert "v1.0" in str(exc_info.value)
+    assert "already exists" in str(exc_info.value)
+
+    # Original text must be completely unchanged
+    from_db = db_session.query(ConsentPolicyVersion).filter_by(version="v1.0").first()
+    assert from_db is not None
+    assert from_db.consent_text == "Original text A", (
+        "Policy text was silently overwritten — audit hash integrity would be broken"
+    )
+
+
+def test_policy_version_different_versions_both_succeed(db_session):
+    """Creating two distinct version strings is the correct upgrade path."""
+    ConsentService.create_policy_version(db_session, "v1.0", "Policy text v1.0")
+    ConsentService.create_policy_version(db_session, "v1.1", "Updated policy text v1.1")
+
+    all_versions = db_session.query(ConsentPolicyVersion).all()
+    version_strings = {p.version for p in all_versions}
+    assert "v1.0" in version_strings
+    assert "v1.1" in version_strings
+

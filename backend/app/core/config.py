@@ -5,6 +5,7 @@ from typing import Literal
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/screening_db"
     vector_store_path: str = "/app/data/chroma"
+    sentry_dsn: str = ""
 
     # S3 Settings
     s3_bucket_name: str = "voice-recordings-prod"

@@ -215,3 +215,130 @@ def test_audio_endpoints(client, db_session):
     resp = client.get(f"/api/v1/sessions/{session.id}/recordings/{recording_id}/play")
     assert resp.status_code == 404
     assert resp.json()["detail"]["error_code"] == "RECORDING_NOT_FOUND"
+
+
+def test_audio_upload_creates_stub_answer(client, db_session):
+    # Setup test session and question, but do NOT create any answer row in database
+    from app.models.resume import Resume
+    from app.models.session import Session
+    from app.models.question import Question
+
+    resume = Resume(
+        id=uuid.uuid4(),
+        raw_text="Test resume",
+        extracted_skills=[],
+        extracted_technologies=[],
+        years_experience_estimate=2,
+    )
+    db_session.add(resume)
+    db_session.commit()
+
+    session = Session(
+        id=uuid.uuid4(),
+        resume_id=resume.id,
+        role="backend_engineer",
+        mode="self_prep",
+        status="IN_PROGRESS",
+    )
+    db_session.add(session)
+    db_session.commit()
+
+    question = Question(
+        id=uuid.uuid4(),
+        session_id=session.id,
+        sequence=1,
+        topic="API design",
+        question_text="Explain REST.",
+    )
+    db_session.add(question)
+    db_session.commit()
+
+    # Verify no answer exists initially
+    existing_answer = db_session.query(Answer).filter(Answer.question_id == question.id).first()
+    assert existing_answer is None
+
+    # Perform POST upload
+    file_data = b"fresh audio bytes"
+    resp = client.post(
+        f"/api/v1/sessions/{session.id}/questions/{question.id}/audio",
+        files={"file": ("recording.wav", file_data, "audio/wav")},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    recording_id = data["recording_id"]
+    transcript = data["transcript"]
+
+    # Verify answer was created automatically
+    db_session.expire_all()
+    created_answer = db_session.query(Answer).filter(Answer.question_id == question.id).first()
+    assert created_answer is not None
+    assert str(created_answer.recording_id) == recording_id
+    assert created_answer.answer_text == transcript
+    assert len(created_answer.answer_text) > 0
+
+
+def test_second_audio_upload_reuses_existing_stub_answer(client, db_session):
+    # Setup test session and question, but do NOT create any answer row in database
+    from app.models.resume import Resume
+    from app.models.session import Session
+    from app.models.question import Question
+
+    resume = Resume(
+        id=uuid.uuid4(),
+        raw_text="Test resume",
+        extracted_skills=[],
+        extracted_technologies=[],
+        years_experience_estimate=2,
+    )
+    db_session.add(resume)
+    db_session.commit()
+
+    session = Session(
+        id=uuid.uuid4(),
+        resume_id=resume.id,
+        role="backend_engineer",
+        mode="self_prep",
+        status="IN_PROGRESS",
+    )
+    db_session.add(session)
+    db_session.commit()
+
+    question = Question(
+        id=uuid.uuid4(),
+        session_id=session.id,
+        sequence=1,
+        topic="API design",
+        question_text="Explain REST.",
+    )
+    db_session.add(question)
+    db_session.commit()
+
+    # Upload first time
+    resp = client.post(
+        f"/api/v1/sessions/{session.id}/questions/{question.id}/audio",
+        files={"file": ("recording1.wav", b"first audio", "audio/wav")},
+    )
+    assert resp.status_code == 201
+    recording1_id = resp.json()["recording_id"]
+
+    # Verify single answer exists
+    db_session.expire_all()
+    answers = db_session.query(Answer).filter(Answer.question_id == question.id).all()
+    assert len(answers) == 1
+    assert str(answers[0].recording_id) == recording1_id
+
+    # Upload second time (retry scenario)
+    resp = client.post(
+        f"/api/v1/sessions/{session.id}/questions/{question.id}/audio",
+        files={"file": ("recording2.wav", b"second audio retry", "audio/wav")},
+    )
+    assert resp.status_code == 201
+    recording2_id = resp.json()["recording_id"]
+
+    # Verify still exactly one answer exists and it has been updated to recording2_id
+    db_session.expire_all()
+    answers = db_session.query(Answer).filter(Answer.question_id == question.id).all()
+    assert len(answers) == 1
+    assert str(answers[0].recording_id) == recording2_id
+    assert recording2_id != recording1_id
+

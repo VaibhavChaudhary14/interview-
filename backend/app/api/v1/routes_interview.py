@@ -101,6 +101,37 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
         .first()
     )
     if unanswered:
+        # Determine collection name for RAG text fetch
+        from app.models.role_family import RoleFamily
+        kb_collection_name = None
+        if session.matched_family_id:
+            family = db.query(RoleFamily).filter(RoleFamily.id == session.matched_family_id).first()
+            if family:
+                kb_collection_name = family.kb_collection_name
+        else:
+            kb_collection_name = f"kb_{session.role}"
+
+        reference_texts = []
+        if unanswered.source_chunk_ids and kb_collection_name:
+            try:
+                retriever = _get_retriever()
+                if retriever and retriever.store:
+                    col = retriever.store.client.get_collection(kb_collection_name)
+                    res = col.get(ids=unanswered.source_chunk_ids)
+                    if res and res.get("ids"):
+                        for i in range(len(res["ids"])):
+                            doc_id = res["ids"][i]
+                            doc_text = res["documents"][i] if res.get("documents") else ""
+                            meta = res["metadatas"][i] if res.get("metadatas") else {}
+                            reference_texts.append({
+                                "id": doc_id,
+                                "text": doc_text,
+                                "source_doc": meta.get("source_doc", "unknown"),
+                                "page": meta.get("page", "?"),
+                            })
+            except Exception as e:
+                logger.warning("Failed to fetch reference texts for unanswered question: %s", e)
+
         return QuestionResponse(
             question_id=str(unanswered.id),
             sequence=unanswered.sequence,
@@ -108,6 +139,8 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
             question_text=unanswered.question_text,
             source_chunks=unanswered.source_chunk_ids or [],
             is_final_question=session.questions_asked >= session.max_questions,
+            copilot_hints=unanswered.copilot_hints,
+            reference_texts=reference_texts,
         )
 
     # Check if we've hit the question limit
@@ -204,6 +237,7 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
         prev_answer=prev_answer_text,
         years_experience=years_exp,
         mode=session.mode,
+        difficulty=session.difficulty,
     )
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -213,6 +247,7 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
         topic=result.get("topic", topic),
         question_text=result.get("question", ""),
         source_chunk_ids=[c.id for c in chunks],
+        copilot_hints=result.get("copilot_hints"),
         generation_strategy="adaptive" if prev_answer_text else "initial",
     )
     db.add(new_question)
@@ -222,6 +257,16 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
     db.commit()
     db.refresh(new_question)
 
+    reference_texts = [
+        {
+            "id": c.id,
+            "text": c.text,
+            "source_doc": c.metadata.get("source_doc", "unknown"),
+            "page": c.metadata.get("page", "?"),
+        }
+        for c in chunks
+    ]
+
     return QuestionResponse(
         question_id=str(new_question.id),
         sequence=new_question.sequence,
@@ -229,6 +274,8 @@ def get_next_question(session_id: str, db: DBSession = Depends(get_db)):
         question_text=new_question.question_text,
         source_chunks=new_question.source_chunk_ids or [],
         is_final_question=session.questions_asked >= session.max_questions,
+        copilot_hints=new_question.copilot_hints,
+        reference_texts=reference_texts,
     )
 
 

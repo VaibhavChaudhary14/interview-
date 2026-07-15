@@ -1,5 +1,7 @@
 import os
 import uuid
+import logging
+import tempfile
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response
 from fastapi.responses import FileResponse
@@ -9,10 +11,61 @@ from app.models.session import Session
 from app.models.answer import Answer
 from app.models.recording import Recording
 from app.models.question import Question
+from app.models.answer_metrics import AnswerMetrics
 from app.services.audio import AudioService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["audio"])
 
+
+# ---------------------------------------------------------------------------
+# Delivery Metrics Job
+# ---------------------------------------------------------------------------
+
+def _upsert_metrics(db: DBSession, answer_id, result: dict):
+    """
+    Get-or-create an AnswerMetrics row and set all fields from `result`.
+    Idempotent: retrying after a transient failure overwrites the previous row.
+    """
+    existing = db.query(AnswerMetrics).filter_by(answer_id=answer_id).first()
+    if existing:
+        for key, value in result.items():
+            setattr(existing, key, value)
+    else:
+        db.add(AnswerMetrics(answer_id=answer_id, **result))
+    db.commit()
+
+
+def _run_metrics_job(db: DBSession, answer: Answer, audio_bytes: bytes | None):
+    """
+    Compute and persist delivery metrics for a completed answer.
+
+    Called synchronously from both the sync STT completion path and the
+    AssemblyAI webhook path. At ~0.5s per 2-min answer this is fast enough
+    to run inline. Move to FastAPI BackgroundTasks in Phase 2 if needed.
+
+    If audio_bytes is None (recording deleted before webhook arrived, or S3
+    error), records computation_error instead of crashing — the answer and
+    transcript are unaffected.
+    """
+    from app.services.delivery_metrics import DeliveryMetricsService
+
+    if not audio_bytes:
+        _upsert_metrics(db, answer.id, {
+            "computation_error": "Audio not available for metrics computation",
+            "computed_at": datetime.now(timezone.utc),
+        })
+        return
+
+    transcript = answer.transcript_text or answer.answer_text or ""
+    result = DeliveryMetricsService().compute(str(answer.id), audio_bytes, transcript)
+    _upsert_metrics(db, answer.id, result)
+
+
+# ---------------------------------------------------------------------------
+# Audio upload + transcription
+# ---------------------------------------------------------------------------
 
 @router.post("/sessions/{session_id}/questions/{question_id}/audio", status_code=201)
 async def upload_answer_audio(
@@ -51,12 +104,10 @@ async def upload_answer_audio(
         session_id=str(session.id),
         answer_id=str(answer.id),
         file_content=content,
-        consent_id=None,  # We can link from latest consent in future if needed
+        consent_id=None,
     )
 
     # Transcribe recording
-    import logging
-    logger = logging.getLogger(__name__)
     from app.services.transcription import TranscriptionService
     from app.services.audio_providers import SyncPollExhausted
 
@@ -89,6 +140,16 @@ async def upload_answer_audio(
     answer.recording_id = recording.id
     db.commit()
 
+    # ── Sync path metrics trigger ──────────────────────────────────────────
+    # Only runs when transcription completed synchronously. Webhook path has
+    # its own trigger in assemblyai_webhook() below.
+    if status == "completed":
+        try:
+            _run_metrics_job(db, answer, content)
+        except Exception as exc:
+            # Metrics failure must never fail the upload response.
+            logger.warning("Metrics job failed for answer %s: %s", answer.id, exc)
+
     return {
         "recording_id": str(recording.id),
         "transcript": transcript,
@@ -98,6 +159,47 @@ async def upload_answer_audio(
     }
 
 
+# ---------------------------------------------------------------------------
+# Delivery metrics endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/sessions/{session_id}/answers/{answer_id}/metrics")
+def get_answer_metrics(session_id: str, answer_id: str, db: DBSession = Depends(get_db)):
+    """
+    Returns delivery metrics for a single answer.
+    The frontend should poll this after upload until status == "ready" or "error".
+    Metrics are computed asynchronously after transcription completes.
+    """
+    # Verify session exists (lightweight auth guard)
+    session = db.query(Session).filter(Session.id == uuid.UUID(session_id)).first()
+    if not session:
+        raise HTTPException(status_code=404, detail={"error_code": "SESSION_NOT_FOUND", "message": "No session found."})
+
+    metrics = db.query(AnswerMetrics).filter_by(answer_id=uuid.UUID(answer_id)).first()
+    if not metrics:
+        return {"status": "not_computed"}
+
+    if metrics.computation_error:
+        return {"status": "error", "message": "Delivery metrics unavailable for this answer."}
+
+    return {
+        "status": "ready",
+        "wpm": metrics.wpm,
+        "word_count": metrics.word_count,
+        "audio_duration_seconds": metrics.audio_duration_seconds,
+        "pause_count": metrics.pause_count,
+        "avg_pause_duration": metrics.avg_pause_duration,
+        "longest_pause_seconds": metrics.longest_pause_seconds,
+        "filler_word_count": metrics.filler_word_count,
+        "filler_word_breakdown": metrics.filler_word_breakdown,
+        "computed_at": metrics.computed_at.isoformat() if metrics.computed_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recording playback / deletion
+# ---------------------------------------------------------------------------
+
 @router.get("/sessions/{session_id}/recordings/{recording_id}/play")
 def play_recording(
     session_id: str,
@@ -106,7 +208,6 @@ def play_recording(
     user_id: str | None = None,
     db: DBSession = Depends(get_db),
 ):
-    # Verify session exists
     session = db.query(Session).filter(Session.id == uuid.UUID(session_id)).first()
     if not session:
         raise HTTPException(status_code=404, detail={"error_code": "SESSION_NOT_FOUND", "message": "No session found."})
@@ -134,7 +235,6 @@ def delete_recording(
     recording_id: str,
     db: DBSession = Depends(get_db),
 ):
-    # Verify session exists
     session = db.query(Session).filter(Session.id == uuid.UUID(session_id)).first()
     if not session:
         raise HTTPException(status_code=404, detail={"error_code": "SESSION_NOT_FOUND", "message": "No session found."})
@@ -159,6 +259,10 @@ def serve_local_audio(recording_id: str, db: DBSession = Depends(get_db)):
     return FileResponse(local_path, media_type="audio/wav")
 
 
+# ---------------------------------------------------------------------------
+# TTS
+# ---------------------------------------------------------------------------
+
 @router.post("/sessions/{session_id}/tts")
 def generate_tts(
     session_id: str,
@@ -181,12 +285,20 @@ def generate_tts(
     return Response(content=audio_bytes, media_type="audio/wav", headers=headers)
 
 
+# ---------------------------------------------------------------------------
+# AssemblyAI webhook (async transcription completion path)
+# ---------------------------------------------------------------------------
+
 @router.post("/webhooks/assemblyai/transcript")
 async def assemblyai_webhook(payload: dict, db: DBSession = Depends(get_db)):
     """
     AssemblyAI POSTs here when transcription completes (async completion path).
     Idempotent: if TranscriptionJob is already 'completed', this is a no-op.
+    Metrics job is triggered here as well as in the sync path — both paths
+    must trigger it or webhook-completed answers never get delivery metrics.
     """
+    from app.core.config import settings as _settings
+
     job_id = payload.get("transcript_id") or payload.get("id")
     if not job_id:
         return {"ok": True}
@@ -207,7 +319,7 @@ async def assemblyai_webhook(payload: dict, db: DBSession = Depends(get_db)):
                 import httpx
                 resp = httpx.get(
                     f"https://api.assemblyai.com/v2/transcript/{job_id}",
-                    headers={"Authorization": settings.assemblyai_api_key},
+                    headers={"Authorization": _settings.assemblyai_api_key},
                     timeout=10.0
                 )
                 if resp.status_code == 200:
@@ -223,6 +335,19 @@ async def assemblyai_webhook(payload: dict, db: DBSession = Depends(get_db)):
                 if not answer.answer_text or answer.answer_text.strip() == "":
                     answer.answer_text = text
                 db.commit()
+
+                # ── Webhook path metrics trigger ───────────────────────────
+                # Audio bytes must come from AudioService to work in both S3
+                # and local-storage modes — never read recording.s3_key raw.
+                if answer.recording_id:
+                    try:
+                        audio_bytes = AudioService.read_recording_bytes(db, str(answer.recording_id))
+                        _run_metrics_job(db, answer, audio_bytes)
+                    except Exception as exc:
+                        logger.warning(
+                            "Webhook metrics job failed for answer %s: %s", answer.id, exc
+                        )
+
     elif status == "error":
         job.status = "error"
         job.error_message = payload.get("error", "Unknown error")
@@ -230,6 +355,10 @@ async def assemblyai_webhook(payload: dict, db: DBSession = Depends(get_db)):
 
     return {"ok": True}
 
+
+# ---------------------------------------------------------------------------
+# Transcript status polling
+# ---------------------------------------------------------------------------
 
 @router.get("/sessions/{session_id}/answers/{answer_id_or_question_id}/transcript-status")
 async def get_transcript_status(session_id: str, answer_id_or_question_id: str, db: DBSession = Depends(get_db)):

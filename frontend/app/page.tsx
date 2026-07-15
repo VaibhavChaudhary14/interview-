@@ -40,6 +40,7 @@ export default function HomePage() {
   const router = useRouter();
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [role, setRole] = useState<string>("");
+  const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -59,7 +60,7 @@ export default function HomePage() {
       const res = await fetch("/api/v1/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume_id: resumeId, role }),
+        body: JSON.stringify({ resume_id: resumeId, role, difficulty }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -76,8 +77,9 @@ export default function HomePage() {
 
   const canStart = !!role;
 
+
   return (
-    <div>
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
       {/* ── Hero ─────────────────────────────────────────── */}
       <div
         className="animate-fade-in"
@@ -110,22 +112,21 @@ export default function HomePage() {
             marginBottom: "1rem",
           }}
         >
-          <span className="gradient-text">AI-Powered</span>
+          <span className="gradient-text">Practice Mock Interviews</span>
           <br />
-          <span style={{ color: "#e2e8f0" }}>Technical Interview</span>
+          <span style={{ color: "#e2e8f0" }}>With AI Coach</span>
         </h1>
 
         <p
           style={{
             fontSize: "1.0625rem",
             color: "#94a3b8",
-            maxWidth: 480,
+            maxWidth: 520,
             margin: "0 auto",
             lineHeight: 1.65,
           }}
         >
-          Upload your resume · enter a target role · receive personalized questions generated using
-          Retrieval-Augmented Generation.
+          Get instant feedback on speaking speed, filler words, and technical depth. Completely free, no registration required.
         </p>
 
         <div
@@ -137,7 +138,7 @@ export default function HomePage() {
             marginTop: "1.5rem",
           }}
         >
-          {["Resume-aware questions", "Any Target Role", "Adaptive depth", "Full transcript"].map(
+          {["100% Free Self-Prep", "Real-Time Speech Coaching", "Custom Role Generation", "Resume-Aware RAG"].map(
             (f) => (
               <span key={f} className="badge badge-primary" style={{ fontSize: "0.75rem" }}>
                 ✦ {f}
@@ -227,12 +228,60 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Step 3: Start ─────────────────────────────────── */}
+      {/* ── Step 3: Difficulty Selection ──────────────────── */}
+      <div
+        className="animate-fade-in"
+        style={{ marginBottom: "1.25rem", animationDelay: "0.25s" }}
+      >
+        <StepLabel number={3} label="Choose your difficulty level" done={true} />
+        <div className="card" style={{ padding: "1.25rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
+            {[
+              { value: "beginner", label: "Beginner", desc: "Foundational, core theories" },
+              { value: "intermediate", label: "Intermediate", desc: "Standard professional depth" },
+              { value: "advanced", label: "Advanced", desc: "Complex scenarios & design" },
+            ].map((d) => {
+              const active = difficulty === d.value;
+              return (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => setDifficulty(d.value as any)}
+                  style={{
+                    padding: "0.75rem",
+                    borderRadius: "8px",
+                    background: active
+                      ? "rgba(99,102,241,0.12)"
+                      : "rgba(255,255,255,0.02)",
+                    border: active
+                      ? "1px solid rgba(99,102,241,0.6)"
+                      : "1px solid rgba(255,255,255,0.08)",
+                    color: active ? "#e2e8f0" : "#94a3b8",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    textAlign: "center",
+                    boxShadow: active ? "0 0 12px rgba(99,102,241,0.15)" : "none",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.25rem", color: active ? "#a5b4fc" : "#cbd5e1" }}>
+                    {d.label}
+                  </div>
+                  <div style={{ fontSize: "0.725rem", color: active ? "#94a3b8" : "#64748b", lineHeight: 1.3 }}>
+                    {d.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Step 4: Start ─────────────────────────────────── */}
       <div
         className="animate-fade-in"
         style={{ animationDelay: "0.3s" }}
       >
-        <StepLabel number={3} label="Begin your interview" done={false} />
+        <StepLabel number={4} label="Begin your interview" done={false} />
         <button
           id="start-interview-btn"
           onClick={handleStartInterview}
@@ -268,6 +317,7 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
     </div>
   );
 }

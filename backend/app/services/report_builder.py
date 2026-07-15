@@ -50,6 +50,7 @@ class ReportBuilderService:
                 "source_chunks": q.source_chunk_ids or [],
                 "recording_id": recording_id,
                 "audio_metrics": audio_metrics,
+                "answer_id": str(answer.id) if answer else None,
             })
 
         avg_words = total_words // max(answered_count, 1)

@@ -14,5 +14,6 @@ class Question(Base):
     topic = Column(String, nullable=False)
     question_text = Column(Text, nullable=False)
     source_chunk_ids = Column(JSONB, default=list)
+    copilot_hints = Column(JSONB, nullable=True)
     generation_strategy = Column(String, default="initial")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

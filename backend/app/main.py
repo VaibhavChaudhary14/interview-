@@ -12,9 +12,23 @@ from app.api.v1.routes_reports import router as reports_router
 from app.api.v1.routes_roles import router as roles_router
 from app.api.v1.routes_consent import router as consent_router
 from app.api.v1.routes_audio import router as audio_router
+from app.api.v1.routes_analytics import router as analytics_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=1.0,
+            profiles_sample_rate=1.0,
+        )
+        logger.info("Sentry initialized successfully.")
+    except Exception as e:
+        logger.error("Failed to initialize Sentry: %s", e)
+
 
 app = FastAPI(
     title="Candidate Screening System",
@@ -58,3 +72,4 @@ app.include_router(interview_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api/v1")
 app.include_router(consent_router, prefix="/api/v1")
 app.include_router(audio_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")

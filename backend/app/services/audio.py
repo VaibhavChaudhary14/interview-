@@ -29,6 +29,45 @@ class AudioService:
         return None
 
     @classmethod
+    def read_recording_bytes(cls, db: DBSession, recording_id: str) -> bytes | None:
+        """
+        Fetch raw audio bytes for a recording, using the same S3/local-fallback
+        duality as upload_recording and delete_recording.
+
+        Returns None if the recording is deleted, not found, or fetch fails —
+        callers must handle None gracefully (e.g., store computation_error
+        rather than crashing). Never raises.
+        """
+        from uuid import UUID as _UUID
+        rec_id = _UUID(recording_id) if isinstance(recording_id, str) else recording_id
+        recording = db.query(Recording).filter(Recording.id == rec_id).first()
+        if not recording or recording.deletion_completed_at is not None or not recording.s3_key:
+            logger.warning("read_recording_bytes: recording %s not available", recording_id)
+            return None
+
+        s3_client = cls._get_s3_client()
+        if s3_client:
+            # S3 path — mirrors upload_recording's S3 put_object
+            try:
+                obj = s3_client.get_object(
+                    Bucket=settings.s3_bucket_name, Key=recording.s3_key
+                )
+                return obj["Body"].read()
+            except ClientError as e:
+                logger.error("Failed to read recording from S3 (%s): %s", recording.s3_key, e)
+                return None
+        else:
+            # Local fallback path — s3_key is the absolute local path (set by upload_recording)
+            local_path = Path(recording.s3_key)
+            if local_path.exists():
+                logger.debug("read_recording_bytes: local path %s", local_path)
+                return local_path.read_bytes()
+            logger.warning("read_recording_bytes: local file not found at %s", local_path)
+            return None
+
+
+
+    @classmethod
     def upload_recording(
         cls,
         db: DBSession,

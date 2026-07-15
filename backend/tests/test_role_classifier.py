@@ -223,11 +223,16 @@ def test_provider_usage_tracking_and_alerting(db_session):
         assert usage.call_count == 1
         assert usage.total_seconds == 10.5
 
-        # Check logs contain cost details
+        # Check logs contain cost details.
+        # provider_usage.py uses %-style lazy formatting; call_args[0][0] is the
+        # format template, call_args[0][1] is the provider name argument.
         mock_logger.info.assert_called()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "STT/TTS: assemblyai used" in log_msg
-        assert "cost_estimate" in log_msg
+        log_format = mock_logger.info.call_args[0][0]
+        log_args = mock_logger.info.call_args[0]
+        assert "STT:" in log_format            # confirms it's an STT log line
+        assert "cost_estimate" in log_format   # cost estimate is still logged
+        assert "assemblyai" in log_args        # provider name passed as arg
+
 
         # Test threshold alert (>80% of 600 min, i.e. 480 mins = 28,800 seconds)
         ProviderUsage.record_usage(db_session, "assemblyai", 30000.0)
