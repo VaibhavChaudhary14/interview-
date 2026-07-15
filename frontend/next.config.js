@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  output: process.env.NEXT_STANDALONE === "true" ? "standalone" : undefined,
   // Prevent "socket hang up" / ECONNRESET when the backend takes a while
   // (e.g. during RAG retrieval + LLM call). keepAlive:false forces a fresh
   // TCP connection per request, which avoids half-closed socket races.
