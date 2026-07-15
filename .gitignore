@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -42,3 +42,9 @@ backend/app/data/chroma/
 
 # Task/agent files
 .gemini/
+
+# Documentation and Knowledge Base
+doc/
+knowledge base/
+"knowledge base"/
+
