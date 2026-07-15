@@ -60,6 +60,16 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/")
+def read_root():
+    return {
+        "message": "AI Candidate Screening API Backend is running!",
+        "docs_url": "/docs",
+        "health_url": "/health",
+        "version": "0.1.0",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "env": settings.env}
