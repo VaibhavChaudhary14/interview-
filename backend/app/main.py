@@ -54,15 +54,9 @@ async def app_exception_handler(request: Request, exc: AppException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception")
-    import traceback
     return JSONResponse(
         status_code=500,
-        content={
-            "error_code": "INTERNAL_ERROR",
-            "message": str(exc),
-            "type": type(exc).__name__,
-            "traceback": traceback.format_exc()
-        },
+        content={"error_code": "INTERNAL_ERROR", "message": "An unexpected error occurred.", "details": {}},
     )
 
 
@@ -78,13 +72,7 @@ def read_root():
 
 @app.get("/health")
 def health():
-    db_url = settings.database_url
-    masked_db = db_url[:65] + "..." if db_url else "None"
-    return {
-        "status": "ok",
-        "env": settings.env,
-        "database_url_prefix": masked_db
-    }
+    return {"status": "ok", "env": settings.env}
 
 
 app.include_router(roles_router, prefix="/api/v1")
