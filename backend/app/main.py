@@ -73,7 +73,7 @@ def read_root():
 @app.get("/health")
 def health():
     db_url = settings.database_url
-    masked_db = db_url[:30] + "..." if db_url else "None"
+    masked_db = db_url[:65] + "..." if db_url else "None"
     return {
         "status": "ok",
         "env": settings.env,
