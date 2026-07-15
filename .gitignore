@@ -11,6 +11,8 @@ build/
 
 # Environment
 .env
+.env.local
+*.env.*
 !.env.example
 
 # Node

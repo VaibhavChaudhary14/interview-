@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { BrowseNavLink } from "@/components/BrowseNavLink";
+import { Inter } from "next/font/google";
+import { cn } from "@/lib/utils";
 
+const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "AI Interview Simulator | Candidate Screening System",
@@ -12,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", inter.variable)}>
       <body className="page-wrapper">
         {/* ── Header ─────────────────────────────────────── */}
         <header
