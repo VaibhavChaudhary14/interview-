@@ -72,7 +72,13 @@ def read_root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "env": settings.env}
+    db_url = settings.database_url
+    masked_db = db_url[:30] + "..." if db_url else "None"
+    return {
+        "status": "ok",
+        "env": settings.env,
+        "database_url_prefix": masked_db
+    }
 
 
 app.include_router(roles_router, prefix="/api/v1")
