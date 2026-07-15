@@ -54,9 +54,15 @@ async def app_exception_handler(request: Request, exc: AppException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception")
+    import traceback
     return JSONResponse(
         status_code=500,
-        content={"error_code": "INTERNAL_ERROR", "message": "An unexpected error occurred.", "details": {}},
+        content={
+            "error_code": "INTERNAL_ERROR",
+            "message": str(exc),
+            "type": type(exc).__name__,
+            "traceback": traceback.format_exc()
+        },
     )
 
 
