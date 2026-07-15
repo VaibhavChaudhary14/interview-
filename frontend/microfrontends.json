@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/microfrontends.json",
+  "version": "1",
+  "applications": {
+    "interview": {
+      "packageName": "candidate-screening-frontend",
+      "routing": [
+        {
+          "paths": ["/:path*"]
+        }
+      ]
+    }
+  }
+}
