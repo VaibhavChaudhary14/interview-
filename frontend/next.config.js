@@ -1,3 +1,4 @@
+// Trigger build with new verified git user configuration
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: process.env.NEXT_STANDALONE === "true" ? "standalone" : undefined,
